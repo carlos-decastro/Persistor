@@ -112,8 +112,8 @@ export async function runCli() {
           console.log(`\n❌ Found ${result.diffs.length} differences:\n`);
           
           const table = new Table({
-            head: ['Table', 'Type', 'Column/Constraint', 'Source (Expected)', 'Target (Actual)'],
-            colWidths: [40, 30, 50, 60, 30],
+            head: ['Table', 'Type', 'Column/Constraint', 'Source (Expected)', 'Target (Actual)', 'Fix Script'],
+            colWidths: [20, 20, 25, 30, 20, 50],
             wordWrap: true
           });
 
@@ -123,7 +123,8 @@ export async function runCli() {
               diff.type.replace('_', ' '),
               diff.column || '-',
               diff.expected || '-',
-              diff.actual || '-'
+              diff.actual || '-',
+              diff.fix || '-'
             ]);
           });
 

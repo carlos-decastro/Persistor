@@ -26,6 +26,7 @@ export class SchemaExporter {
       { header: 'Column/Constraint', key: 'column', width: 35 },
       { header: 'Source (Expected)', key: 'expected', width: 50 },
       { header: 'Target (Actual)', key: 'actual', width: 50 },
+      { header: 'Fix Script', key: 'fix', width: 60 },
     ];
 
     // Styling header
@@ -33,7 +34,7 @@ export class SchemaExporter {
     sheet.getRow(1).fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFE0E0E0' }
+      fgColor: { argb: 'FFC6EFCE' } // Light Green
     };
 
     result.diffs.forEach(diff => {
@@ -43,6 +44,7 @@ export class SchemaExporter {
         column: diff.column || '-',
         expected: diff.expected || '-',
         actual: diff.actual || '-',
+        fix: diff.fix || '-',
       });
     });
 
@@ -60,6 +62,7 @@ export class SchemaExporter {
       { header: 'Column/Constraint', key: 'column' },
       { header: 'Source (Expected)', key: 'expected' },
       { header: 'Target (Actual)', key: 'actual' },
+      { header: 'Fix Script', key: 'fix' },
     ];
 
     result.diffs.forEach(diff => {
@@ -69,6 +72,7 @@ export class SchemaExporter {
         column: diff.column || '-',
         expected: diff.expected || '-',
         actual: diff.actual || '-',
+        fix: diff.fix || '-',
       });
     });
 

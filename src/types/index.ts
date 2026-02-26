@@ -57,3 +57,10 @@ export interface TableMetadata {
   indexes: TableIndex[];
   sequences: TableSequence[];
 }
+
+export interface DatabaseObject {
+  name: string;
+  schema: string;
+  definition: string;
+  tableName?: string; // For triggers
+}

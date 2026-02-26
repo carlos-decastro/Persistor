@@ -1,5 +1,5 @@
 import { DbConnection } from '../db/connection.js';
-import { TableColumn, TableConstraint, TableIndex, TableMetadata, TableSequence } from '../types/index.js';
+import { DatabaseObject, TableColumn, TableConstraint, TableIndex, TableMetadata, TableSequence } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
 export class SchemaInspector {
@@ -159,5 +159,39 @@ export class SchemaInspector {
       }
     }
     return result;
+  }
+  
+  async listFunctions(schema: string = 'public'): Promise<DatabaseObject[]> {
+    logger.info(`Inspecting functions in schema: ${schema}`);
+    const rows = await this.db.query(`
+      SELECT 
+        n.nspname as schema,
+        p.proname as name,
+        pg_get_functiondef(p.oid) as definition
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = $1 
+        AND p.prokind = 'f'
+    `, [schema]);
+    
+    return rows;
+  }
+
+  async listTriggers(schema: string = 'public'): Promise<DatabaseObject[]> {
+    logger.info(`Inspecting triggers in schema: ${schema}`);
+    const rows = await this.db.query(`
+      SELECT 
+        tr.tgname as name,
+        n.nspname as schema,
+        pg_get_triggerdef(tr.oid) as definition,
+        rel.relname as "tableName"
+      FROM pg_trigger tr
+      JOIN pg_class rel ON rel.oid = tr.tgrelid
+      JOIN pg_namespace n ON n.oid = rel.relnamespace
+      WHERE n.nspname = $1
+        AND tr.tgisinternal = false
+    `, [schema]);
+    
+    return rows;
   }
 }
