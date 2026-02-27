@@ -5,12 +5,13 @@ import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import { SchemaComparator } from '../core/comparator.js';
 import { Orchestrator } from '../core/orchestrator.js';
-import { DbConnection } from '../db/connection.js';
-import { SchemaInspector } from '../inspector/inspector.js';
+import { EngineFactory } from '../engines/factory.js';
+import { DbType } from '../types/index.js';
 import { SchemaExporter } from '../utils/exporter.js';
 import { logger } from '../utils/logger.js';
 
 const dbConfigSchema = z.object({
+  dbType: z.enum(['postgres', 'oracle']).default('postgres'),
   host: z.string().default('localhost'),
   port: z.string().default('5432').transform(Number),
   database: z.string(),
@@ -37,6 +38,7 @@ export async function runCli() {
     .description('Full PostgreSQL backup tool using only SELECT permissions')
     .requiredOption('-d, --database <string>', 'Database name')
     .requiredOption('-u, --user <string>', 'Database user')
+    .option('--db-type <type>', 'Database type (postgres|oracle)', 'postgres')
     .option('-h, --host <string>', 'Database host', 'localhost')
     .option('-p, --port <number>', 'Database port', '5432')
     .option('-P, --password <string>', 'Database password')
@@ -64,6 +66,7 @@ export async function runCli() {
     // Source DB Options
     .requiredOption('--s-db <string>', 'Source Database name')
     .requiredOption('--s-user <string>', 'Source Database user')
+    .option('--db-type <type>', 'Database type for both (postgres|oracle)', 'postgres')
     .option('--s-host <string>', 'Source Database host', 'localhost')
     .option('--s-port <number>', 'Source Database port', '5432')
     .option('--s-pass <string>', 'Source Database password')
@@ -79,6 +82,7 @@ export async function runCli() {
     .action(async (options: any) => {
       try {
         const sourceConfig = dbConfigSchema.parse({
+          dbType: options.dbType,
           host: options.sHost,
           port: options.sPort,
           database: options.sDb,
@@ -88,6 +92,7 @@ export async function runCli() {
         });
 
         const targetConfig = dbConfigSchema.parse({
+          dbType: options.dbType,
           host: options.tHost,
           port: options.tPort,
           database: options.tDb,
@@ -96,12 +101,13 @@ export async function runCli() {
           schema: options.tSchema,
         });
 
-        const sourceDb = new DbConnection(sourceConfig);
-        const targetDb = new DbConnection(targetConfig);
+        const sourceConnection = EngineFactory.createConnection(options.dbType as DbType, sourceConfig);
+        const targetConnection = EngineFactory.createConnection(options.dbType as DbType, targetConfig);
 
         const comparator = new SchemaComparator(
-          new SchemaInspector(sourceDb),
-          new SchemaInspector(targetDb)
+          EngineFactory.createInspector(options.dbType as DbType, sourceConnection),
+          EngineFactory.createInspector(options.dbType as DbType, targetConnection),
+          options.dbType as DbType
         );
 
         const result = await comparator.compare(sourceConfig.schema, targetConfig.schema);
@@ -144,8 +150,8 @@ export async function runCli() {
           }
         }
 
-        await sourceDb.close();
-        await targetDb.close();
+        await sourceConnection.close();
+        await targetConnection.close();
       } catch (error) {
         if (error instanceof z.ZodError) {
           logger.error({ errors: error.issues }, 'Invalid configuration');

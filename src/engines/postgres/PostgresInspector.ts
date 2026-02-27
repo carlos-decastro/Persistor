@@ -1,9 +1,10 @@
-import { DbConnection } from '../db/connection.js';
-import { DatabaseObject, TableColumn, TableConstraint, TableIndex, TableMetadata, TableSequence } from '../types/index.js';
-import { logger } from '../utils/logger.js';
+import { DatabaseObject, TableColumn, TableConstraint, TableIndex, TableMetadata, TableSequence } from '../../types/index.js';
+import { logger } from '../../utils/logger.js';
+import { ISchemaInspector } from '../interfaces.js';
+import { PostgresConnection } from './PostgresConnection.js';
 
-export class SchemaInspector {
-  constructor(private db: DbConnection) {}
+export class PostgresInspector implements ISchemaInspector {
+  constructor(private db: PostgresConnection) {}
 
   async listTables(schema: string = 'public', targetTables?: string[]): Promise<string[]> {
     let query = `
@@ -63,7 +64,6 @@ export class SchemaInspector {
   }
 
   private async getConstraints(schema: string, tableName: string): Promise<TableConstraint[]> {
-    // This is simplified, for real FKs we need more details
     const rows = await this.db.query(`
       SELECT
         tc.constraint_name as "name",
@@ -105,7 +105,6 @@ export class SchemaInspector {
   }
 
   private async getIndexes(schema: string, tableName: string): Promise<TableIndex[]> {
-    // Exclude PK indexes since they are usually created with the table or via ALTER TABLE
     const rows = await this.db.query(`
       SELECT
         indexname as name,
@@ -123,7 +122,6 @@ export class SchemaInspector {
   }
 
   private async getSequences(schema: string, tableName: string): Promise<TableSequence[]> {
-    // Find sequences associated with columns (SERIAL/IDENTITY)
     const rows = await this.db.query(`
       SELECT 
         s.relname as name,
@@ -160,7 +158,7 @@ export class SchemaInspector {
     }
     return result;
   }
-  
+
   async listFunctions(schema: string = 'public'): Promise<DatabaseObject[]> {
     logger.info(`Inspecting functions in schema: ${schema}`);
     const rows = await this.db.query(`

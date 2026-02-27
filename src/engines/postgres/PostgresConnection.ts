@@ -1,9 +1,11 @@
-import { Pool, PoolClient } from 'pg';
-import { ConnectionConfig } from '../types/index.js';
-import { logger } from '../utils/logger.js';
+import pg from 'pg';
+import { ConnectionConfig } from '../../types/index.js';
+import { logger } from '../../utils/logger.js';
+import { IDbConnection } from '../interfaces.js';
+const { Pool } = pg;
 
-export class DbConnection {
-  private pool: Pool;
+export class PostgresConnection implements IDbConnection {
+  private pool: pg.Pool;
 
   constructor(config: ConnectionConfig) {
     this.pool = new Pool({
@@ -22,7 +24,11 @@ export class DbConnection {
     });
   }
 
-  async getClient(): Promise<PoolClient> {
+  async getPool(): Promise<pg.Pool> {
+    return this.pool;
+  }
+
+  async getClient(): Promise<pg.PoolClient> {
     return await this.pool.connect();
   }
 
@@ -41,6 +47,6 @@ export class DbConnection {
 
   async close() {
     await this.pool.end();
-    logger.info('Database connection pool closed');
+    logger.info('Postgres connection pool closed');
   }
 }

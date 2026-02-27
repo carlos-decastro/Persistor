@@ -1,17 +1,18 @@
-import { DDLGenerator } from '../generator/generator.js';
-import { SchemaInspector } from '../inspector/inspector.js';
+import { EngineFactory } from '../engines/factory.js';
+import { IDDLGenerator, ISchemaInspector } from '../engines/interfaces.js';
 import { ComparisonResult, SchemaDiff } from '../types/comparison.js';
-import { TableMetadata } from '../types/index.js';
+import { DbType, TableMetadata } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
 export class SchemaComparator {
-  private generator: DDLGenerator;
+  private generator: IDDLGenerator;
 
   constructor(
-    private sourceInspector: SchemaInspector,
-    private targetInspector: SchemaInspector
+    private sourceInspector: ISchemaInspector,
+    private targetInspector: ISchemaInspector,
+    private dbType: DbType = 'postgres'
   ) {
-    this.generator = new DDLGenerator();
+    this.generator = EngineFactory.createGenerator(this.dbType);
   }
 
   async compare(sourceSchema: string = 'public', targetSchema: string = 'public'): Promise<ComparisonResult> {
@@ -64,32 +65,18 @@ export class SchemaComparator {
       const tCol = targetCols.get(sCol.name);
 
       if (!tCol) {
-        let fix = `ALTER TABLE "${source.schema}"."${source.name}" ADD COLUMN "${sCol.name}" ${sCol.dataType.toUpperCase()}`;
-        if (sCol.characterMaximumLength) {
-          fix += `(${sCol.characterMaximumLength})`;
-        } else if (sCol.numericPrecision !== null && sCol.numericScale !== null) {
-          fix += `(${sCol.numericPrecision}, ${sCol.numericScale})`;
-        }
-        if (!sCol.isNullable) fix += ' NOT NULL';
-        if (sCol.columnDefault) fix += ` DEFAULT ${sCol.columnDefault}`;
-        fix += ';';
-
         diffs.push({
           type: 'MISSING_COLUMN',
           table: source.name,
           column: sCol.name,
           details: `Column "${sCol.name}" is missing in target table.`,
-          fix
+          fix: this.generator.generateAddColumn(source.name, source.schema, sCol)
         });
         continue;
       }
 
       // Compare Data Type (using udtName for better accuracy)
       if (sCol.udtName !== tCol.udtName) {
-        let typeStr = sCol.dataType.toUpperCase();
-        if (sCol.characterMaximumLength) typeStr += `(${sCol.characterMaximumLength})`;
-        else if (sCol.numericPrecision !== null && sCol.numericScale !== null) typeStr += `(${sCol.numericPrecision}, ${sCol.numericScale})`;
-
         diffs.push({
           type: 'TYPE_MISMATCH',
           table: source.name,
@@ -97,7 +84,7 @@ export class SchemaComparator {
           expected: sCol.dataType,
           actual: tCol.dataType,
           details: `Column "${sCol.name}" type mismatch. Source: ${sCol.dataType} (${sCol.udtName}), Target: ${tCol.dataType} (${tCol.udtName})`,
-          fix: `ALTER TABLE "${source.schema}"."${source.name}" ALTER COLUMN "${sCol.name}" TYPE ${typeStr};`
+          fix: this.generator.generateAlterColumnType(source.name, source.schema, sCol)
         });
       }
 
@@ -109,7 +96,7 @@ export class SchemaComparator {
           column: sCol.name,
           expected: sCol.isNullable ? 'NULL' : 'NOT NULL',
           actual: tCol.isNullable ? 'NULL' : 'NOT NULL',
-          fix: `ALTER TABLE "${source.schema}"."${source.name}" ALTER COLUMN "${sCol.name}" ${sCol.isNullable ? 'DROP NOT NULL' : 'SET NOT NULL'};`
+          fix: this.generator.generateAlterColumnNullability(source.name, source.schema, sCol)
         });
       }
 
@@ -121,9 +108,7 @@ export class SchemaComparator {
           column: sCol.name,
           expected: sCol.columnDefault || 'NULL',
           actual: tCol.columnDefault || 'NULL',
-          fix: sCol.columnDefault 
-            ? `ALTER TABLE "${source.schema}"."${source.name}" ALTER COLUMN "${sCol.name}" SET DEFAULT ${sCol.columnDefault};`
-            : `ALTER TABLE "${source.schema}"."${source.name}" ALTER COLUMN "${sCol.name}" DROP DEFAULT;`
+          fix: this.generator.generateAlterColumnDefault(source.name, source.schema, sCol)
         });
       }
     }
@@ -135,24 +120,15 @@ export class SchemaComparator {
     for (const sConstraint of source.constraints) {
         // Note: constraint names might differ but definitions be equal. 
         // For simplicity and since we control the source/target, we check by name first.
-        if (!targetConstraints.has(sConstraint.name)) {
-            let fix = '';
-            if (sConstraint.type === 'PRIMARY KEY') {
-                fix = `ALTER TABLE "${source.schema}"."${source.name}" ADD CONSTRAINT "${sConstraint.name}" PRIMARY KEY (${sConstraint.columns.map(c => `"${c}"`).join(', ')});`;
-            } else if (sConstraint.type === 'FOREIGN KEY') {
-                fix = `ALTER TABLE "${source.schema}"."${source.name}" ADD CONSTRAINT "${sConstraint.name}" FOREIGN KEY (${sConstraint.columns.map(c => `"${c}"`).join(', ')}) REFERENCES "${source.schema}"."${sConstraint.foreignTable}" (${sConstraint.foreignColumns?.map(c => `"${c}"`).join(', ')});`;
-            } else if (sConstraint.type === 'UNIQUE') {
-                fix = `ALTER TABLE "${source.schema}"."${source.name}" ADD CONSTRAINT "${sConstraint.name}" UNIQUE (${sConstraint.columns.map(c => `"${c}"`).join(', ')});`;
-            }
-
-            diffs.push({
-                type: 'MISSING_CONSTRAINT',
-                table: source.name,
-                column: sConstraint.name,
-                details: `Constraint "${sConstraint.name}" (${sConstraint.type}) is missing in target.`,
-                fix
-            });
-        }
+      if (!targetConstraints.has(sConstraint.name)) {
+        diffs.push({
+          type: 'MISSING_CONSTRAINT',
+          table: source.name,
+          column: sConstraint.name,
+          details: `Constraint "${sConstraint.name}" (${sConstraint.type}) is missing in target.`,
+          fix: this.generator.generateConstraintFix(source.name, source.schema, sConstraint)
+        });
+      }
     }
   }
 
@@ -223,12 +199,13 @@ export class SchemaComparator {
       }
 
       if (sTrig.definition !== tTrig.definition) {
+        const dropTrigger = this.generator.generateDropTrigger(sTrig.tableName!, sTrig.schema!, sTrig.name);
         diffs.push({
           type: 'TRIGGER_MISMATCH',
           table: sTrig.tableName!,
           column: sTrig.name,
           details: `Trigger "${sTrig.name}" on table "${sTrig.tableName}" definition mismatch.`,
-          fix: `DROP TRIGGER IF EXISTS "${sTrig.name}" ON "${sTrig.schema}"."${sTrig.tableName}";\n${sTrig.definition};`
+          fix: `${dropTrigger}\n${sTrig.definition};`
         });
       }
     }

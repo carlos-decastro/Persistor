@@ -1,3 +1,5 @@
+export type DbType = 'postgres' | 'oracle';
+
 export interface ConnectionConfig {
   host: string;
   port: number;
@@ -8,6 +10,7 @@ export interface ConnectionConfig {
 }
 
 export interface DatabaseConfig extends ConnectionConfig {
+  dbType: DbType;
   tables?: string[];
   outputDir: string;
 }

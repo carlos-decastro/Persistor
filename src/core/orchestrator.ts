@@ -1,23 +1,22 @@
-import { DbConnection } from '../db/connection.js';
-import { DataExtractor } from '../extractor/extractor.js';
-import { DDLGenerator } from '../generator/generator.js';
-import { SchemaInspector } from '../inspector/inspector.js';
+import { EngineFactory } from '../engines/factory.js';
+import { IDDLGenerator, IDataExtractor, IDbConnection, ISchemaInspector } from '../engines/interfaces.js';
 import { DatabaseConfig, TableMetadata } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 import { SQLWriter } from '../writer/writer.js';
 
 export class Orchestrator {
-  private db: DbConnection;
-  private inspector: SchemaInspector;
-  private ddlGen: DDLGenerator;
-  private extractor: DataExtractor;
+  private db: IDbConnection;
+  private inspector: ISchemaInspector;
+  private ddlGen: IDDLGenerator;
+  private extractor: IDataExtractor;
   private writer: SQLWriter;
 
   constructor(private config: DatabaseConfig) {
-    this.db = new DbConnection(config);
-    this.inspector = new SchemaInspector(this.db);
-    this.ddlGen = new DDLGenerator();
-    this.extractor = new DataExtractor(this.db);
+    const type = config.dbType || 'postgres';
+    this.db = EngineFactory.createConnection(type, config);
+    this.inspector = EngineFactory.createInspector(type, this.db);
+    this.ddlGen = EngineFactory.createGenerator(type);
+    this.extractor = EngineFactory.createExtractor(type, this.db);
     this.writer = new SQLWriter(config.outputDir, config.database);
   }
 

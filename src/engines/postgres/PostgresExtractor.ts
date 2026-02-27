@@ -1,9 +1,10 @@
 import Cursor from 'pg-cursor';
-import { DbConnection } from '../db/connection.js';
-import { TableMetadata } from '../types/index.js';
+import { TableMetadata } from '../../types/index.js';
+import { IDataExtractor } from '../interfaces.js';
+import { PostgresConnection } from './PostgresConnection.js';
 
-export class DataExtractor {
-  constructor(private db: DbConnection) {}
+export class PostgresExtractor implements IDataExtractor {
+  constructor(private db: PostgresConnection) {}
 
   async *streamTableData(meta: TableMetadata, chunkSize: number = 1000): AsyncGenerator<string[]> {
     const client = await this.db.getClient();
@@ -57,7 +58,6 @@ export class DataExtractor {
     }
 
     if (t === 'bytea') {
-      // Postgres bytea format is typically \xHEX
       if (Buffer.isBuffer(val)) {
         return `'\\x${val.toString('hex')}'`;
       }
@@ -65,12 +65,10 @@ export class DataExtractor {
     }
     
     if (Array.isArray(val)) {
-        // Simple array formatting, might need more robust handling for nested types
         const elements = val.map(v => this.formatValue(v, 'text')).join(',');
         return `ARRAY[${elements}]`;
     }
 
-    // Default: string escape
     return `'${val.toString().replace(/'/g, "''")}'`;
   }
 }
